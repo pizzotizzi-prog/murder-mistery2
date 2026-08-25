@@ -1,5 +1,6 @@
 -- [[ MM2 EXPLOIT FOR XENO EXECUTOR ]] --
 -- ESP (Wallhack) + KILL AURA
+-- Aggiornato per colorare in modo affidabile Murderer (rosso) e Sheriff (blu)
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
@@ -29,35 +30,136 @@ end
 
 local KnifeRemote = GetKnifeRemote()
 
--- SISTEMA ESP (Wallhack)
+-- FUNZIONE PER DETERMINARE IL RUOLO DEL GIOCATORE (più fonti per robustezza)
+local function GetPlayerRole(player)
+    -- 1) Attributo "Role"
+    local role = nil
+    local ok, att = pcall(function() return player:GetAttribute("Role") end)
+    if ok and type(att) == "string" and att ~= "" then
+        role = att
+    end
+
+    -- 2) StringValue "Role" o "role" sotto player
+    if not role then
+        local sv = player:FindFirstChild("Role") or player:FindFirstChild("role")
+        if sv and sv:IsA("StringValue") then
+            role = sv.Value
+        end
+    end
+
+    -- 3) leaderstats.Role
+    if not role then
+        local ls = player:FindFirstChild("leaderstats")
+        if ls then
+            local r = ls:FindFirstChild("Role") or ls:FindFirstChild("role")
+            if r and r:IsA("StringValue") then
+                role = r.Value
+            end
+        end
+    end
+
+    -- 4) StringValue "Role" nel Character
+    if not role and player.Character then
+        local r2 = player.Character:FindFirstChild("Role") or player.Character:FindFirstChild("role")
+        if r2 and r2:IsA("StringValue") then
+            role = r2.Value
+        end
+    end
+
+    -- 5) Inferenza dagli Tools nel Character (knife -> Murderer, gun/revolver -> Sheriff)
+    if not role and player.Character then
+        for _, item in pairs(player.Character:GetChildren()) do
+            if item:IsA("Tool") then
+                local nm = item.Name:lower()
+                if nm:find("knife") or nm:find("blade") then
+                    return "Murderer"
+                end
+                if nm:find("gun") or nm:find("revolver") or nm:find("sheriff") or nm:find("handcannon") then
+                    return "Sheriff"
+                end
+            end
+        end
+    end
+
+    -- Fallback
+    if not role then
+        return "Innocent"
+    end
+    return role
+end
+
+-- SISTEMA ESP (Wallhack) con aggiornamento dinamico del colore
 local function ApplyESP(player)
     if player == LocalPlayer then return end
 
-    local function CreateHighlight()
-        if not player.Character then return end
-        
-        -- Rimuovi eventuali highlight vecchi
-        for _, v in pairs(player.Character:GetChildren()) do
+    local function RemoveOldHighlight(character)
+        if not character then return end
+        for _, v in pairs(character:GetChildren()) do
             if v.Name == "Xeno_ESP" then v:Destroy() end
         end
+    end
+
+    local function CreateHighlight()
+        if not player.Character then return end
+
+        RemoveOldHighlight(player.Character)
 
         local hl = Instance.new("Highlight")
         hl.Name = "Xeno_ESP"
         hl.Parent = player.Character
         hl.FillTransparency = 0.4
         hl.OutlineTransparency = 0
-        
-        -- Logica Colori Ruoli
-        -- Nota: MM2 cambia spesso dove salva i ruoli. Se non colora, 
-        -- è perché il gioco ha spostato l'attributo "Role".
-        local role = player:GetAttribute("Role") or "Innocent"
-        if role == "Murderer" then
-            hl.FillColor = Config.MurdererColor
-        elseif role == "Sheriff" then
-            hl.FillColor = Config.SheriffColor
-        else
-            hl.FillColor = Config.InnocentColor
+
+        -- Funzione che aggiorna il colore in base al ruolo corrente
+        local function UpdateColor()
+            if not hl.Parent then return end
+            local role = GetPlayerRole(player) or "Innocent"
+            if role == "Murderer" then
+                hl.FillColor = Config.MurdererColor
+            elseif role == "Sheriff" then
+                hl.FillColor = Config.SheriffColor
+            else
+                hl.FillColor = Config.InnocentColor
+            end
         end
+
+        -- Esegui subito un primo aggiornamento
+        UpdateColor()
+
+        -- Connessioni per aggiornare quando possibile
+        local connections = {}
+
+        -- Aggiorna se cambia l'attributo "Role" (se supportato)
+        if player.GetAttributeChangedSignal then
+            local ok, con = pcall(function()
+                return player:GetAttributeChangedSignal("Role"):Connect(UpdateColor)
+            end)
+            if ok and con then table.insert(connections, con) end
+        end
+
+        -- Aggiorna quando vengono aggiunti/rimossi oggetti nel character (es. tools)
+        if player.Character then
+            table.insert(connections, player.Character.ChildAdded:Connect(function() task.wait(0.15); UpdateColor() end))
+            table.insert(connections, player.Character.ChildRemoved:Connect(function() task.wait(0.15); UpdateColor() end))
+        end
+
+        -- Pulisci connessioni quando il personaggio viene rimosso
+        table.insert(connections, player.CharacterRemoving:Connect(function()
+            for _, c in pairs(connections) do
+                if c and c.Disconnect then
+                    pcall(function() c:Disconnect() end)
+                end
+            end
+            -- distruggi highlight residuo
+            RemoveOldHighlight(player.Character)
+        end))
+    end
+
+    -- Se l'ESP è disabilitato, rimuovi highlight e non crearne
+    if not Config.EspEnabled then
+        if player.Character then RemoveOldHighlight(player.Character) end
+        player.CharacterAdded:Connect(function() if player.Character then RemoveOldHighlight(player.Character) end end)
+        return
     end
 
     player.CharacterAdded:Connect(function()
