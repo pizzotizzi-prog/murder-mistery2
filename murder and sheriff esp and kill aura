@@ -1,0 +1,103 @@
+-- [[ MM2 EXPLOIT FOR XENO EXECUTOR ]] --
+-- ESP (Wallhack) + KILL AURA
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local RepStorage = game:GetService("ReplicatedStorage")
+
+-- CONFIGURAZIONE (Puoi cambiare questi valori)
+local Config = {
+    EspEnabled = true,
+    KillAuraEnabled = true,
+    AuraRange = 18, -- Raggio d'attacco leggermente aumentato per Xeno
+    MurdererColor = Color3.fromRGB(255, 0, 0), -- Rosso
+    SheriffColor = Color3.fromRGB(0, 150, 255),  -- Blu
+    InnocentColor = Color3.fromRGB(255, 255, 255) -- Bianco
+}
+
+-- FUNZIONE PER TROVARE IL REMOTE DELL'ATTACCO (Dynamic Search)
+local function GetKnifeRemote()
+    -- Cerca in tutto ReplicatedStorage un remote che contenga "Knife" o "Attack"
+    for _, v in pairs(RepStorage:GetDescendants()) do
+        if v:IsA("RemoteEvent") and (v.Name:find("Knife") or v.Name:find("Attack")) then
+            return v
+        end
+    end
+    return nil
+end
+
+local KnifeRemote = GetKnifeRemote()
+
+-- SISTEMA ESP (Wallhack)
+local function ApplyESP(player)
+    if player == LocalPlayer then return end
+
+    local function CreateHighlight()
+        if not player.Character then return end
+        
+        -- Rimuovi eventuali highlight vecchi
+        for _, v in pairs(player.Character:GetChildren()) do
+            if v.Name == "Xeno_ESP" then v:Destroy() end
+        end
+
+        local hl = Instance.new("Highlight")
+        hl.Name = "Xeno_ESP"
+        hl.Parent = player.Character
+        hl.FillTransparency = 0.4
+        hl.OutlineTransparency = 0
+        
+        -- Logica Colori Ruoli
+        -- Nota: MM2 cambia spesso dove salva i ruoli. Se non colora, 
+        -- è perché il gioco ha spostato l'attributo "Role".
+        local role = player:GetAttribute("Role") or "Innocent"
+        if role == "Murderer" then
+            hl.FillColor = Config.MurdererColor
+        elseif role == "Sheriff" then
+            hl.FillColor = Config.SheriffColor
+        else
+            hl.FillColor = Config.InnocentColor
+        end
+    end
+
+    player.CharacterAdded:Connect(function()
+        task.wait(0.5) -- Aspetta che il personaggio spawni completamente
+        CreateHighlight()
+    end)
+
+    if player.Character then
+        CreateHighlight()
+    end
+end
+
+-- KILL AURA (Attacco Automatico)
+RunService.Heartbeat:Connect(function()
+    if not Config.KillAuraEnabled then return end
+    if LocalPlayer:GetAttribute("Role") ~= "Murderer" then return end -- Funziona solo se sei Murderer
+
+    local char = LocalPlayer.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local targetPart = player.Character.HumanoidRootPart
+            local distance = (char.HumanoidRootPart.Position - targetPart.Position).Magnitude
+
+            if distance <= Config.AuraRange then
+                if KnifeRemote then
+                    -- Esegue l'attacco verso il target
+                    KnifeRemote:FireServer(targetPart)
+                end
+            end
+        end
+    end
+end)
+
+-- Inizializzazione ESP per tutti i giocatori presenti e nuovi
+for _, p in pairs(Players:GetPlayers()) do
+    ApplyESP(p)
+end
+
+Players.PlayerAdded:Connect(ApplyESP)
+
+print("--- Xeno MM2 Script Loaded Successfully ---")
