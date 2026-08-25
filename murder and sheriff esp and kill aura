@@ -7,6 +7,7 @@ local LocalPlayer = Players.LocalPlayer
 local RunService = game:GetService("RunService")
 local RepStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
 
 local Config = {
     EspEnabled = true,
@@ -234,7 +235,25 @@ local function CreateLocalUI()
     killMurderCorner.CornerRadius = UDim.new(0, 10)
     killMurderCorner.Parent = killMurderBtn
 
-    -- Effetto visivo locale
+    -- NUOVO: Bottone TROVA/SEGNALA PISTOLA (centrale)
+    local findPistolBtn = Instance.new("TextButton")
+    findPistolBtn.Size = UDim2.new(0, 160, 0, 40)
+    findPistolBtn.Position = UDim2.new(0.5, -80, 0.9, -20)
+    findPistolBtn.Text = "PICKUP PISTOL (SEGNALA)"
+    findPistolBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    findPistolBtn.TextScaled = true
+    findPistolBtn.Font = Enum.Font.GothamBold
+    findPistolBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
+    findPistolBtn.BorderSizePixel = 0
+    findPistolBtn.Parent = frame
+    findPistolBtn.Visible = true
+    findPistolBtn.ZIndex = 1000
+
+    local findPistolCorner = Instance.new("UICorner")
+    findPistolCorner.CornerRadius = UDim.new(0, 10)
+    findPistolCorner.Parent = findPistolBtn
+
+    -- Effetto visivo locale per giocatori
     local function TemporaryHighlightPlayers(playersList, color)
         local temp = {}
         for _, p in ipairs(playersList) do
@@ -258,6 +277,93 @@ local function CreateLocalUI()
         end)
     end
 
+    -- Funzione di ricerca e evidenziazione pistola (sicura — NON cambia lo stato del server)
+    local function FindAndHighlightPistol()
+        local keywords = {"pistol", "revolver", "handcannon", "gun"}
+        local found = {}
+        for _, obj in pairs(Workspace:GetDescendants()) do
+            if obj:IsA("Tool") or obj:IsA("Model") then
+                local name = (obj.Name or ""):lower()
+                for _, kw in ipairs(keywords) do
+                    if name:find(kw) then
+                        -- Verifica che lo strumento non sia nel Character o Backpack di un giocatore
+                        local parent = obj.Parent
+                        local owned = false
+                        if parent then
+                            -- se è dentro Backpack
+                            if parent.Name == "Backpack" and parent.Parent and Players:GetPlayerFromCharacter(parent.Parent) then
+                                owned = true
+                            end
+                            -- se è dentro la Character di un giocatore
+                            if Players:GetPlayerFromCharacter(parent) then
+                                owned = true
+                            end
+                        end
+                        if not owned then
+                            table.insert(found, obj)
+                        end
+                        break
+                    end
+                end
+            end
+        end
+
+        -- Rimuove eventuali evidenziazioni precedenti sugli oggetti trovati
+        for _, obj in ipairs(found) do
+            -- crea highlight temporaneo sull'handle (se presente) o sul modello
+            local target = nil
+            if obj:IsA("Tool") then
+                target = obj:FindFirstChild("Handle") or obj
+            elseif obj:IsA("Model") then
+                target = obj:FindFirstChild("Handle") or obj.PrimaryPart or obj
+            end
+            if target then
+                local old = target:FindFirstChild("Xeno_Pistol_HL")
+                if old then pcall(function() old:Destroy() end) end
+                local hl = Instance.new("Highlight")
+                hl.Name = "Xeno_Pistol_HL"
+                hl.Parent = target
+                hl.FillTransparency = 0.2
+                hl.OutlineTransparency = 0
+                hl.FillColor = Config.SheriffColor
+                delay(Config.HighlightDuration, function()
+                    if hl and hl.Parent then pcall(function() hl:Destroy() end) end
+                end)
+            end
+        end
+
+        -- Mostra messaggio sullo schermo con info (se troviamo almeno uno)
+        if #found > 0 then
+            local msg = Instance.new("TextLabel")
+            msg.Size = UDim2.new(0, 380, 0, 60)
+            msg.Position = UDim2.new(0.5, -190, 0.05, 0)
+            msg.BackgroundTransparency = 0.4
+            msg.BackgroundColor3 = Color3.fromRGB(0,0,0)
+            msg.TextColor3 = Color3.fromRGB(255,255,255)
+            msg.TextScaled = false
+            msg.Font = Enum.Font.GothamBold
+            msg.ZIndex = 2000
+            msg.Text = "Pistola trovata: "..tostring(#found).." oggetto(s). Controlla la posizione sulla mappa o vai in quella direzione."
+            msg.Parent = screenGui
+
+            delay(3, function() pcall(function() msg:Destroy() end) end)
+        else
+            local msg = Instance.new("TextLabel")
+            msg.Size = UDim2.new(0, 300, 0, 40)
+            msg.Position = UDim2.new(0.5, -150, 0.05, 0)
+            msg.BackgroundTransparency = 0.4
+            msg.BackgroundColor3 = Color3.fromRGB(0,0,0)
+            msg.TextColor3 = Color3.fromRGB(255,255,255)
+            msg.TextScaled = false
+            msg.Font = Enum.Font.GothamBold
+            msg.ZIndex = 2000
+            msg.Text = "Nessuna pistola non posseduta trovata in workspace."
+            msg.Parent = screenGui
+
+            delay(2.5, function() pcall(function() msg:Destroy() end) end)
+        end
+    end
+
     -- Azioni bottoni
     killAllBtn.Activated:Connect(function()
         local others = {}
@@ -279,6 +385,13 @@ local function CreateLocalUI()
         end
         TemporaryHighlightPlayers(murderers, Config.SheriffColor)
         print("Kill Murderer requested — ACTIONS DISABLED IN THIS SAFE SCRIPT.")
+    end)
+
+    -- Attacca il comportamento al nuovo bottone: evidenzia / segnala le pistole a terra NON possedute
+    findPistolBtn.Activated:Connect(function()
+        -- Avviso: non eseguiamo alcuna azione server-side per prendere l'arma. Questo è SOLO informativo.
+        FindAndHighlightPistol()
+        print("Find Pistol requested — script only highlights and reports location (no pickup performed).")
     end)
 
     print("--- UI CREATED AND VISIBLE ---")
