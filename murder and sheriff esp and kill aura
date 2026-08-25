@@ -6,21 +6,21 @@ local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local RunService = game:GetService("RunService")
 local RepStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
 
 local Config = {
     EspEnabled = true,
-    KillAuraEnabled = false, -- Disabilitato per sicurezza
+    KillAuraEnabled = false,
     AuraRange = 18,
     MurdererColor = Color3.fromRGB(255, 0, 0),
     SheriffColor = Color3.fromRGB(0, 150, 255),
     InnocentColor = Color3.fromRGB(255, 255, 255),
-    HighlightDuration = 2 -- durata effetti visivi locali dei pulsanti (secondi)
+    HighlightDuration = 2
 }
 
 -- Controlla se il giocatore ha un Tool con nomi che contengono una delle parole chiave.
 local function HasToolAnywhere(player, keywords)
     keywords = keywords or {}
-    -- Controlla Character (mano equipaggiata)
     if player.Character then
         for _, c in pairs(player.Character:GetChildren()) do
             if c:IsA("Tool") then
@@ -31,7 +31,6 @@ local function HasToolAnywhere(player, keywords)
             end
         end
     end
-    -- Controlla Backpack (inventario)
     local backpack = player:FindFirstChild("Backpack")
     if backpack then
         for _, t in pairs(backpack:GetChildren()) do
@@ -46,7 +45,7 @@ local function HasToolAnywhere(player, keywords)
     return false
 end
 
--- TROVA REMOTE (non usato per attacchi in questa versione, mantenuto per riferimento)
+-- TROVA REMOTE
 local function GetKnifeRemote()
     for _, v in pairs(RepStorage:GetDescendants()) do
         if v:IsA("RemoteEvent") and (v.Name:find("Knife") or v.Name:find("Attack")) then
@@ -57,7 +56,7 @@ local function GetKnifeRemote()
 end
 local KnifeRemote = GetKnifeRemote()
 
--- DETERMINA RUOLO usando più fonti + presenza strumenti in inventory
+-- DETERMINA RUOLO
 local function GetPlayerRole(player)
     local role = nil
     local ok, att = pcall(function() return player:GetAttribute("Role") end)
@@ -81,7 +80,6 @@ local function GetPlayerRole(player)
         if r2 and r2:IsA("StringValue") then role = r2.Value end
     end
 
-    -- Inferenzs dagli strumenti (anche se sono nello zaino)
     if not role then
         if HasToolAnywhere(player, {"knife", "blade"}) then
             return "Murderer"
@@ -95,7 +93,7 @@ local function GetPlayerRole(player)
     return role
 end
 
--- APPLICA ESP e aggiorna colore dinamicamente
+-- APPLICA ESP
 local function ApplyESP(player)
     if player == LocalPlayer then return end
 
@@ -142,15 +140,14 @@ local function ApplyESP(player)
             table.insert(connections, player.Character.ChildRemoved:Connect(function() task.wait(0.15); UpdateColor() end))
         end
 
-        -- Aggiorna anche quando Backpack cambia (per strumenti nell'inventario)
         local backpack = player:FindFirstChild("Backpack")
         if backpack then
             table.insert(connections, backpack.ChildAdded:Connect(function() task.wait(0.15); UpdateColor() end))
             table.insert(connections, backpack.ChildRemoved:Connect(function() task.wait(0.15); UpdateColor() end))
         else
-            -- se non esiste ancora, prova a collegare quando viene aggiunto
             table.insert(connections, player.ChildAdded:Connect(function(child)
                 if child.Name == "Backpack" then
+                    task.wait(0.15); UpdateColor()
                     table.insert(connections, child.ChildAdded:Connect(function() task.wait(0.15); UpdateColor() end))
                     table.insert(connections, child.ChildRemoved:Connect(function() task.wait(0.15); UpdateColor() end))
                 end
@@ -183,26 +180,17 @@ local function ApplyESP(player)
     end
 end
 
--- KILL AURA DISABILITATO: in questa versione non viene effettuato alcun attacco.
-RunService.Heartbeat:Connect(function()
-    if not Config.KillAuraEnabled then return end
-    -- Per motivi di sicurezza non eseguiamo attacchi automatici qui.
-end)
-
--- UI LOCALE: Mostra pulsanti quando il LocalPlayer ha coltello o pistola (in mano o nello zaino).
+-- UI LOCALE
 local function CreateLocalUI()
-    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-    if not playerGui then
-        LocalPlayer.ChildAdded:Wait()
-        playerGui = LocalPlayer:WaitForChild("PlayerGui")
-    end
+    local playerGui = LocalPlayer:WaitForChild("PlayerGui")
 
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "XenoUtilityGUI"
     screenGui.Parent = playerGui
     screenGui.ResetOnSpawn = false
+    screenGui.ScreenInsets = Enum.ScreenInsets.CoreGui
 
-    -- Frame principale per i bottoni
+    -- Frame principale
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(1, 0, 1, 0)
     frame.Position = UDim2.new(0, 0, 0, 0)
@@ -221,17 +209,17 @@ local function CreateLocalUI()
     killAllBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
     killAllBtn.BorderSizePixel = 0
     killAllBtn.Parent = frame
-    killAllBtn.Visible = false
+    killAllBtn.Visible = true
+    killAllBtn.ZIndex = 1000
 
-    -- Arrotonda gli angoli del bottone KILL ALL
     local killAllCorner = Instance.new("UICorner")
-    killAllCorner.CornerRadius = UDim.new(0, 8)
+    killAllCorner.CornerRadius = UDim.new(0, 10)
     killAllCorner.Parent = killAllBtn
 
     -- Bottone SHOOT MURDER (destra)
     local killMurderBtn = Instance.new("TextButton")
-    killMurderBtn.Size = UDim2.new(0, 120, 0, 50)
-    killMurderBtn.Position = UDim2.new(1, -140, 0.5, -25)
+    killMurderBtn.Size = UDim2.new(0, 140, 0, 50)
+    killMurderBtn.Position = UDim2.new(1, -160, 0.5, -25)
     killMurderBtn.Text = "SHOOT MURDER"
     killMurderBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     killMurderBtn.TextScaled = true
@@ -239,19 +227,18 @@ local function CreateLocalUI()
     killMurderBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
     killMurderBtn.BorderSizePixel = 0
     killMurderBtn.Parent = frame
-    killMurderBtn.Visible = false
+    killMurderBtn.Visible = true
+    killMurderBtn.ZIndex = 1000
 
-    -- Arrotonda gli angoli del bottone SHOOT MURDER
     local killMurderCorner = Instance.new("UICorner")
-    killMurderCorner.CornerRadius = UDim.new(0, 8)
+    killMurderCorner.CornerRadius = UDim.new(0, 10)
     killMurderCorner.Parent = killMurderBtn
 
-    -- Effetto visivo locale: applica highlight temporaneo ai giocatori specificati
+    -- Effetto visivo locale
     local function TemporaryHighlightPlayers(playersList, color)
         local temp = {}
         for _, p in ipairs(playersList) do
             if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                -- crea highlight locale (non modifica server)
                 local old = p.Character:FindFirstChild("Xeno_Temp_HL")
                 if old then old:Destroy() end
                 local hl = Instance.new("Highlight")
@@ -264,7 +251,6 @@ local function CreateLocalUI()
             end
         end
 
-        -- rimuovi dopo durata
         delay(Config.HighlightDuration, function()
             for _, h in ipairs(temp) do
                 if h and h.Parent then pcall(function() h:Destroy() end) end
@@ -272,14 +258,14 @@ local function CreateLocalUI()
         end)
     end
 
-    -- Azioni dei bottoni: PER SICUREZZA solo effetto locale e messaggio
+    -- Azioni bottoni
     killAllBtn.Activated:Connect(function()
         local others = {}
         for _, p in pairs(Players:GetPlayers()) do
             if p ~= LocalPlayer then table.insert(others, p) end
         end
         TemporaryHighlightPlayers(others, Config.MurdererColor)
-        warn("Kill All requested — ACTIONS DISABLED IN THIS SAFE SCRIPT.")
+        print("Kill All requested — ACTIONS DISABLED IN THIS SAFE SCRIPT.")
     end)
 
     killMurderBtn.Activated:Connect(function()
@@ -292,41 +278,19 @@ local function CreateLocalUI()
             end
         end
         TemporaryHighlightPlayers(murderers, Config.SheriffColor)
-        warn("Kill Murderer requested — ACTIONS DISABLED IN THIS SAFE SCRIPT.")
+        print("Kill Murderer requested — ACTIONS DISABLED IN THIS SAFE SCRIPT.")
     end)
 
-    -- Funzione che aggiorna visibilità bottoni in base agli strumenti che hai (Character o Backpack)
-    local function UpdateButtonsVisibility()
-        local hasKnife = HasToolAnywhere(LocalPlayer, {"knife", "blade"})
-        local hasGun = HasToolAnywhere(LocalPlayer, {"gun", "revolver", "pistol", "handcannon", "sheriff"})
-        killAllBtn.Visible = hasKnife
-        killMurderBtn.Visible = hasGun
-    end
-
-    -- Collega eventi per aggiornare quando cambia equip/inventory
-    UpdateButtonsVisibility()
-    LocalPlayer.CharacterAdded:Connect(function() task.wait(0.5); UpdateButtonsVisibility() end)
-    LocalPlayer.ChildAdded:Connect(function(child)
-        if child.Name == "Backpack" then
-            child.ChildAdded:Connect(function() task.wait(0.15); UpdateButtonsVisibility() end)
-            child.ChildRemoved:Connect(function() task.wait(0.15); UpdateButtonsVisibility() end)
-        end
-    end)
-    -- Se Backpack già esiste
-    local bp = LocalPlayer:FindFirstChild("Backpack")
-    if bp then
-        bp.ChildAdded:Connect(function() task.wait(0.15); UpdateButtonsVisibility() end)
-        bp.ChildRemoved:Connect(function() task.wait(0.15); UpdateButtonsVisibility() end)
-    end
+    print("--- UI CREATED AND VISIBLE ---")
 end
 
--- Inizializzazione ESP per tutti i giocatori presenti e nuovi
+-- Inizializzazione ESP
 for _, p in pairs(Players:GetPlayers()) do
     ApplyESP(p)
 end
 Players.PlayerAdded:Connect(ApplyESP)
 
--- Crea UI locale per il LocalPlayer
+-- Crea UI
 CreateLocalUI()
 
 print("--- Xeno MM2 SAFE UTILITY LOADED ---")
