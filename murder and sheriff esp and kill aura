@@ -1,653 +1,229 @@
--- Fire Hub (SICURO, CLIENT-ONLY)
--- Hub apribile/chiudibile con sezioni: Home / ESP / Utilities
--- TUTTE le funzionalità "offensive" sono SIMULATE o VISUALI. NON vengono invocate RemoteEvent né viene cambiato lo stato server-side.
+--[[
+    FIRE HUB v2.0 (OPTIMIZED)
+    Focus: Client-Side Visuals & Utility
+    Status: Safe / No Remote Events
+]]
 
 local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
-local RepStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer = Players.LocalPlayer
+local CoreGui = game:GetService("CoreGui")
 
--- Config iniziale
+-- // CONFIGURATION
 local Config = {
-    EspEnabled = true,
-    ShowMurderer = true,
-    ShowSheriff = true,
-    ShowInnocent = false,
-    HighlightDuration = 2,
-    SimulatedKillAura = false, -- solo visuale
-    KillAuraRange = 18,
-    SimulatedKillMurder = false, -- solo visuale
-    DragonImage = "rbxassetid://12345678" -- sostituisci con il tuo asset
+    ESP = {
+        Enabled = true,
+        Murderer = true,
+        Sheriff = true,
+        Innocent = false,
+        Colors = {
+            Murderer = Color3.fromRGB(255, 48, 48),
+            Sheriff = Color3.fromRGB(48, 164, 255),
+            Innocent = Color3.fromRGB(255, 255, 255)
+        }
+    },
+    Aura = {
+        Enabled = false,
+        Range = 18,
+        VisualOnly = true
+    },
+    UI = {
+        MainColor = Color3.fromRGB(30, 30, 30),
+        AccentColor = Color3.fromRGB(255, 60, 0),
+        Visible = true
+    }
 }
 
--- helper: check if player has a tool with keywords (client-side)
-local function HasToolAnywhere(player, keywords)
-    keywords = keywords or {}
-    if player.Character then
-        for _, c in pairs(player.Character:GetChildren()) do
-            if c:IsA("Tool") then
-                local nm = (c.Name or ""):lower()
-                for _, kw in ipairs(keywords) do
-                    if nm:find(kw) then return true end
-                end
-            end
-        end
-    end
-    local backpack = player:FindFirstChild("Backpack")
-    if backpack then
-        for _, t in pairs(backpack:GetChildren()) do
-            if t:IsA("Tool") then
-                local nm = (t.Name or ""):lower()
-                for _, kw in ipairs(keywords) do
-                    if nm:find(kw) then return true end
-                end
-            end
-        end
-    end
-    return false
-end
-
--- determino ruolo locale (metodo euristico e sicuro, solo lettura)
-local function GetPlayerRole(player)
+-- // UTILITIES
+local function GetRole(player)
     if not player then return "Innocent" end
-    -- attributo, StringValue o leaderstats
-    local ok, attr = pcall(function() return player:GetAttribute("Role") end)
-    if ok and type(attr) == "string" and attr ~= "" then return attr end
-    local sv = player:FindFirstChild("Role") or player:FindFirstChild("role")
-    if sv and sv:IsA("StringValue") then return sv.Value end
-    local ls = player:FindFirstChild("leaderstats")
-    if ls then
-        local r = ls:FindFirstChild("Role") or ls:FindFirstChild("role")
-        if r and r:IsA("StringValue") then return r.Value end
+    
+    -- Check Attributes/Values
+    local role = player:GetAttribute("Role") or (player:FindFirstChild("Role") and player.Role.Value)
+    if role then return role end
+    
+    -- Heuristic Check (Tools)
+    local char = player.Character
+    local bp = player:FindFirstChild("Backpack")
+    
+    local function checkTools(container)
+        if not container then return nil end
+        for _, tool in pairs(container:GetChildren()) do
+            if tool:IsA("Tool") then
+                local name = tool.Name:lower()
+                if name:find("knife") or name:find("blade") then return "Murderer" end
+                if name:find("pistol") or name:find("revolver") or name:find("gun") then return "Sheriff" end
+            end
+        end
     end
-    if player.Character then
-        local r2 = player.Character:FindFirstChild("Role") or player.Character:FindFirstChild("role")
-        if r2 and r2:IsA("StringValue") then return r2.Value end
-    end
-    -- fallback su strumenti
-    if HasToolAnywhere(player, {"knife", "blade"}) then return "Murderer" end
-    if HasToolAnywhere(player, {"pistol", "revolver", "gun", "handcannon", "sheriff"}) then return "Sheriff" end
-    return "Innocent"
+    
+    return checkTools(char) or checkTools(bp) or "Innocent"
 end
 
--- APPLICA ESP: crea highlight client-side (local)
-local function ApplyESPToPlayer(player)
-    if player == LocalPlayer then return end
-    local function removeOld()
-        if player.Character then
-            for _, c in pairs(player.Character:GetChildren()) do
-                if c.Name == "FireHub_ESP" then
-                    pcall(function() c:Destroy() end)
-                end
+-- // ESP SYSTEM
+local function ApplyESP()
+    for _, player in pairs(Players:GetPlayers()) do
+        if player == LocalPlayer then continue end
+        
+        local function createHighlight()
+            if not player.Character then return end
+            
+            -- Clean old ESP
+            for _, old in pairs(player.Character:GetChildren()) do
+                if old.Name == "FireHub_ESP" then old:Destroy() end
+            end
+
+            if not Config.ESP.Enabled then return end
+
+            local role = GetRole(player)
+            local shouldShow = false
+            local color = Color3.new(1,1,1)
+
+            if role == "Murderer" and Config.ESP.Murderer then shouldShow, color = true, Config.ESP.Colors.Murderer
+            elseif role == "Sheriff" and Config.ESP.Sheriff then shouldShow, color = true, Config.ESP.Colors.Sheriff
+            elseif role == "Innocent" and Config.ESP.Innocent then shouldShow, color = true, Config.ESP.Colors.Innocent end
+
+            if shouldShow then
+                local hl = Instance.new("Highlight")
+                hl.Name = "FireHub_ESP"
+                hl.FillColor = color
+                hl.OutlineColor = Color3.new(1,1,1)
+                hl.FillTransparency = 0.5
+                hl.Parent = player.Character
             end
         end
-    end
-
-    local function create()
-        if not player.Character then return end
-        removeOld()
-        local hl = Instance.new("Highlight")
-        hl.Name = "FireHub_ESP"
-        hl.Parent = player.Character
-        hl.FillTransparency = 0.6
-        hl.OutlineTransparency = 0.4
-
-        local function updateColor()
-            if not hl.Parent then return end
-            local role = GetPlayerRole(player) or "Innocent"
-            if role == "Murderer" and Config.ShowMurderer then
-                hl.FillColor = Color3.fromRGB(255,0,0)
-                hl.Enabled = true
-            elseif role == "Sheriff" and Config.ShowSheriff then
-                hl.FillColor = Color3.fromRGB(0,150,255)
-                hl.Enabled = true
-            elseif role == "Innocent" and Config.ShowInnocent then
-                hl.FillColor = Color3.fromRGB(255,255,255)
-                hl.Enabled = true
-            else
-                hl.Enabled = false
-            end
-        end
-
-        updateColor()
-        -- connetti cambiamenti locali (character add/remove, backpack changes)
-        local conCharAdded = player.CharacterAdded:Connect(function() task.wait(0.2); updateColor() end)
-        local conCharRemoved = player.CharacterRemoving:Connect(function() task.wait(0.1); removeOld() end)
-        -- memorizza connessioni su highlight per pulizia
-        hl:GetPropertyChangedSignal("Parent"):Connect(function()
-            if not hl.Parent then
-                pcall(function()
-                    conCharAdded:Disconnect()
-                    conCharRemoved:Disconnect()
-                end)
-            end
-        end)
-    end
-
-    if Config.EspEnabled then
-        if player.Character then
-            create()
-        end
-        player.CharacterAdded:Connect(function() task.wait(0.3); create() end)
-    else
-        removeOld()
+        
+        createHighlight()
+        player.CharacterAdded:Connect(createHighlight)
     end
 end
 
--- funzione che evidenzia pistole non possedute in Workspace (client-only, safe)
-local function FindAndHighlightPistols()
-    local keywords = {"pistol","revolver","handcannon","gun"}
-    local found = {}
-    for _, obj in pairs(Workspace:GetDescendants()) do
-        if obj:IsA("Tool") or obj:IsA("Model") then
-            local name = (obj.Name or ""):lower()
-            for _, kw in ipairs(keywords) do
-                if name:find(kw) then
-                    -- check owner (backpack or character)
-                    local parent = obj.Parent
-                    local owned = false
-                    if parent then
-                        if parent.Name == "Backpack" and parent.Parent and parent.Parent:IsA("Player") then owned = true end
-                        if Players:GetPlayerFromCharacter(parent) then owned = true end
-                    end
-                    if not owned then table.insert(found, obj) end
-                    break
-                end
-            end
-        end
-    end
+-- // GUI CONSTRUCTION (Modern Style)
+local ScreenGui = Instance.new("ScreenGui", CoreGui)
+ScreenGui.Name = "FireHub_UI"
 
-    for _, obj in ipairs(found) do
-        local target = nil
-        if obj:IsA("Tool") then target = obj:FindFirstChild("Handle") or obj end
-        if obj:IsA("Model") then target = obj:FindFirstChild("Handle") or obj.PrimaryPart or obj end
-        if target then
-            local old = target:FindFirstChild("FireHub_Pistol_HL")
-            if old then pcall(function() old:Destroy() end) end
-            local hl = Instance.new("Highlight")
-            hl.Name = "FireHub_Pistol_HL"
-            hl.Parent = target
-            hl.FillTransparency = 0.3
-            hl.OutlineTransparency = 0
-            hl.FillColor = Color3.fromRGB(0,150,255)
-            delay(Config.HighlightDuration, function()
-                if hl and hl.Parent then pcall(function() hl:Destroy() end) end
-            end)
-        end
-    end
+local MainFrame = Instance.new("Frame", ScreenGui)
+MainFrame.Size = UDim2.new(0, 350, 0, 400)
+MainFrame.Position = UDim2.new(0.5, -175, 0.5, -200)
+MainFrame.BackgroundColor3 = Config.UI.MainColor
+MainFrame.BorderSizePixel = 0
+MainFrame.ClipsDescendants = true
 
-    return #found
-end
+local Corner = Instance.new("UICorner", MainFrame)
+Corner.CornerRadius = UDim.new(0, 8)
 
--- Kill Aura simulata: va a evidenziare giocatori nel range se il client "ha il coltello" (solo visuale)
-local function SimulatedKillAuraStep()
-    if not Config.SimulatedKillAura then return end
-    -- attiva solo se local player ha un coltello (euristica)
-    local hasKnife = HasToolAnywhere(LocalPlayer, {"knife","blade"})
-    if not hasKnife then return end
-    -- evidenzia i giocatori entro il range
-    for _, p in pairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-            local hrp = p.Character:FindFirstChild("HumanoidRootPart")
-            local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-            if hrp and myHrp then
-                local dist = (hrp.Position - myHrp.Position).Magnitude
-                if dist <= Config.KillAuraRange then
-                    -- highlight temporaneo per indicare bersaglio - client-only
-                    local old = p.Character:FindFirstChild("FireHub_KA_HL")
-                    if old then pcall(function() old:Destroy() end) end
-                    local hl = Instance.new("Highlight")
-                    hl.Name = "FireHub_KA_HL"
-                    hl.Parent = p.Character
-                    hl.FillTransparency = 0.4
-                    hl.OutlineTransparency = 0
-                    hl.FillColor = Color3.fromRGB(255,100,0)
-                    delay(0.9, function() if hl and hl.Parent then pcall(function() hl:Destroy() end) end end)
-                end
-            end
-        end
-    end
-end
+local TopBar = Instance.new("Frame", MainFrame)
+TopBar.Size = UDim2.new(1, 0, 0, 40)
+TopBar.BackgroundColor3 = Config.UI.AccentColor
+TopBar.BorderSizePixel = 0
 
--- Kill Murder simulato: se hai la pistola, segnala posizione del murder (client-only)
-local function SimulatedKillMurderAction()
-    local hasGun = HasToolAnywhere(LocalPlayer, {"pistol","revolver","gun","handcannon"})
-    if not hasGun then
-        return false, "Non hai una pistola (client-side) — azione simulata non eseguita."
-    end
-    -- trova murder
-    for _, p in pairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and GetPlayerRole and GetPlayerRole(p) == "Murderer" then
-            if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                local pos = p.Character.HumanoidRootPart.Position
-                -- creiamo un marker locale per la posizione
-                local mark = Instance.new("Part")
-                mark.Name = "FireHub_Murder_Marker"
-                mark.Size = Vector3.new(1,1,1)
-                mark.Anchored = true
-                mark.CanCollide = false
-                mark.Transparency = 0.4
-                mark.Color = Color3.fromRGB(255,0,0)
-                mark.Position = pos + Vector3.new(0,2,0)
-                mark.Parent = Workspace
-                delay(3, function() if mark and mark.Parent then pcall(function() mark:Destroy() end) end end)
-                return true, "Murder segnalato: guarda la posizione evidenziata."
-            else
-                return false, "Murder trovato ma non ha Character/HRP al momento."
-            end
-        end
-    end
-    return false, "Nessun Murder trovato (client-side)."
-end
+local Title = Instance.new("TextLabel", TopBar)
+Title.Text = "FIRE HUB | PREMIUM"
+Title.Size = UDim2.new(1, 0, 1, 0)
+Title.TextColor3 = Color3.new(1,1,1)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 16
+Title.BackgroundTransparency = 1
 
--- ======================================================================
--- UI: hub apribile/chiudibile con Dragon image e le sezioni richieste
--- ======================================================================
+-- Container for buttons
+local Content = Instance.new("ScrollingFrame", MainFrame)
+Content.Size = UDim2.new(1, -20, 1, -50)
+Content.Position = UDim2.new(0, 10, 0, 45)
+Content.BackgroundTransparency = 1
+Content.CanvasSize = UDim2.new(0, 0, 1.5, 0)
+Content.ScrollBarThickness = 2
 
-local function CreateFireHubUI()
-    local playerGui = LocalPlayer:WaitForChild("PlayerGui")
+local UIList = Instance.new("UIListLayout", Content)
+UIList.Padding = UDim.new(0, 5)
 
-    -- rimuovi eventuale precedente
-    local oldGui = playerGui:FindFirstChild("FireHubUI")
-    if oldGui then pcall(function() oldGui:Destroy() end) end
+-- Function to create toggle buttons
+local function CreateToggle(name, default, callback)
+    local btn = Instance.new("TextButton", Content)
+    btn.Size = UDim2.new(1, 0, 0, 35)
+    btn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    btn.Text = name .. ": " .. (default and "ON" or "OFF")
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.Font = Enum.Font.Gotham
+    btn.TextSize = 14
+    
+    local bCorner = Instance.new("UICorner", btn)
+    bCorner.CornerRadius = UDim.new(0, 4)
 
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "FireHubUI"
-    screenGui.ResetOnSpawn = false
-    screenGui.Parent = playerGui
-
-    -- Main frame (invisibile background)
-    local mainFrame = Instance.new("Frame")
-    mainFrame.Name = "MainFrame"
-    mainFrame.Size = UDim2.new(0, 520, 0, 360)
-    mainFrame.Position = UDim2.new(0.5, -260, 0.5, -180)
-    mainFrame.AnchorPoint = Vector2.new(0.5,0.5)
-    mainFrame.BackgroundTransparency = 0.15
-    mainFrame.BackgroundColor3 = Color3.fromRGB(20,20,20)
-    mainFrame.BorderSizePixel = 0
-    mainFrame.Parent = screenGui
-    mainFrame.Visible = false
-
-    local uiCorner = Instance.new("UICorner"); uiCorner.CornerRadius = UDim.new(0,8); uiCorner.Parent = mainFrame
-
-    -- Top bar with Dragon image and title + close/open button
-    local topBar = Instance.new("Frame"); topBar.Size = UDim2.new(1,0,0,60); topBar.Position = UDim2.new(0,0,0,0); topBar.BackgroundTransparency = 0; topBar.BackgroundColor3 = Color3.fromRGB(30,30,30); topBar.Parent = mainFrame
-    local topCorner = Instance.new("UICorner"); topCorner.CornerRadius = UDim.new(0,6); topCorner.Parent = topBar
-
-    local dragonImg = Instance.new("ImageLabel")
-    dragonImg.Size = UDim2.new(0,48,0,48)
-    dragonImg.Position = UDim2.new(0,12,0,6)
-    dragonImg.BackgroundTransparency = 1
-    dragonImg.Image = Config.DragonImage
-    dragonImg.Parent = topBar
-
-    local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(0,300,0,48)
-    title.Position = UDim2.new(0,72,0,6)
-    title.BackgroundTransparency = 1
-    title.Text = "Fire Hub"
-    title.TextColor3 = Color3.fromRGB(255,200,100)
-    title.TextScaled = true
-    title.Font = Enum.Font.GothamBold
-    title.Parent = topBar
-
-    local closeBtn = Instance.new("TextButton")
-    closeBtn.Size = UDim2.new(0,36,0,36)
-    closeBtn.Position = UDim2.new(1,-44,0,12)
-    closeBtn.Text = "X"
-    closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.TextScaled = true
-    closeBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
-    closeBtn.TextColor3 = Color3.fromRGB(255,255,255)
-    closeBtn.Parent = topBar
-    local closeCorner = Instance.new("UICorner"); closeCorner.CornerRadius = UDim.new(0,6); closeCorner.Parent = closeBtn
-
-    -- Left side: tabs
-    local tabsFrame = Instance.new("Frame")
-    tabsFrame.Size = UDim2.new(0,120,1,0)
-    tabsFrame.Position = UDim2.new(0,0,0,60)
-    tabsFrame.BackgroundTransparency = 1
-    tabsFrame.Parent = mainFrame
-
-    local function makeTab(name, y)
-        local b = Instance.new("TextButton")
-        b.Size = UDim2.new(1, -12, 0, 44)
-        b.Position = UDim2.new(0,6,0,y)
-        b.Text = name
-        b.Font = Enum.Font.GothamBold
-        b.TextScaled = true
-        b.TextColor3 = Color3.fromRGB(240,240,240)
-        b.BackgroundColor3 = Color3.fromRGB(35,35,35)
-        b.Parent = tabsFrame
-        local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,6); c.Parent = b
-        return b
-    end
-
-    local homeTab = makeTab("Home", 8)
-    local espTab = makeTab("ESP", 62)
-    local utilTab = makeTab("Utilities", 116)
-
-    -- Right side: content
-    local contentFrame = Instance.new("Frame")
-    contentFrame.Size = UDim2.new(1, -132, 1, -60)
-    contentFrame.Position = UDim2.new(0,126,0,60)
-    contentFrame.BackgroundTransparency = 1
-    contentFrame.Parent = mainFrame
-
-    -- pages
-    local pages = {}
-
-    local function createPage(name)
-        local f = Instance.new("Frame")
-        f.Size = UDim2.new(1,0,1,0)
-        f.BackgroundTransparency = 1
-        f.Visible = false
-        f.Parent = contentFrame
-        pages[name] = f
-        return f
-    end
-
-    local homePage = createPage("Home")
-    local espPage = createPage("ESP")
-    local utilPage = createPage("Utilities")
-
-    -- helper UI builders
-    local function makeLabel(parent, txt, posY)
-        local l = Instance.new("TextLabel")
-        l.Size = UDim2.new(1, -12, 0, 22)
-        l.Position = UDim2.new(0,6,0,posY)
-        l.BackgroundTransparency = 1
-        l.Text = txt
-        l.TextColor3 = Color3.fromRGB(220,220,220)
-        l.Font = Enum.Font.Gotham
-        l.TextScaled = true
-        l.TextXAlignment = Enum.TextXAlignment.Left
-        l.Parent = parent
-        return l
-    end
-
-    local function makeToggle(parent, txt, posY, initial)
-        local txtLbl = makeLabel(parent, txt, posY)
-        local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(0,80,0,26)
-        btn.Position = UDim2.new(1,-92,posY,0)
-        btn.Text = initial and "ON" or "OFF"
-        btn.BackgroundColor3 = initial and Color3.fromRGB(50,200,80) or Color3.fromRGB(150,150,150)
-        btn.TextColor3 = Color3.fromRGB(0,0,0)
-        btn.Font = Enum.Font.GothamBold
-        btn.TextScaled = true
-        btn.Parent = parent
-        local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0,6); corner.Parent = btn
-        return btn
-    end
-
-    local function makeSlider(parent, labelText, posY, minV, maxV, initV)
-        local lbl = makeLabel(parent, labelText, posY)
-        local val = Instance.new("TextLabel")
-        val.Size = UDim2.new(0,60,0,20)
-        val.Position = UDim2.new(1,-74,posY+26,0)
-        val.BackgroundTransparency = 1
-        val.Text = tostring(initV)
-        val.TextScaled = true
-        val.Font = Enum.Font.Gotham
-        val.TextColor3 = Color3.fromRGB(240,240,240)
-        val.Parent = parent
-
-        local sliderFrame = Instance.new("Frame")
-        sliderFrame.Size = UDim2.new(1,-84,0,20)
-        sliderFrame.Position = UDim2.new(0,6,posY+26,0)
-        sliderFrame.BackgroundColor3 = Color3.fromRGB(60,60,60)
-        sliderFrame.Parent = parent
-        local sCorner = Instance.new("UICorner"); sCorner.CornerRadius = UDim.new(0,6); sCorner.Parent = sliderFrame
-
-        local fill = Instance.new("Frame")
-        fill.Size = UDim2.new((initV-minV)/(maxV-minV),0,1,0)
-        fill.BackgroundColor3 = Color3.fromRGB(100,180,255)
-        fill.Parent = sliderFrame
-        local fCorner = Instance.new("UICorner"); fCorner.CornerRadius = UDim.new(0,6); fCorner.Parent = fill
-
-        -- simple click to set relative value (client)
-        sliderFrame.InputBegan:Connect(function(inp)
-            if inp.UserInputType == Enum.UserInputType.MouseButton1 then
-                local mouse = game.Players.LocalPlayer:GetMouse()
-                local absX = mouse.X - sliderFrame.AbsolutePosition.X
-                local percent = math.clamp(absX / sliderFrame.AbsoluteSize.X, 0, 1)
-                fill.Size = UDim2.new(percent,0,1,0)
-                local newVal = math.floor(minV + percent * (maxV-minV))
-                val.Text = tostring(newVal)
-                return newVal
-            end
-        end)
-
-        return {label=lbl, valueLabel=val, slider=sliderFrame, fill=fill}
-    end
-
-    -- populate Home page
-    do
-        local y = 6
-        makeLabel(homePage, "Home", y); y = y + 28
-        -- simulated Kill Aura toggle
-        local kaBtn = makeToggle(homePage, "KillAura (SIM)", y, Config.SimulatedKillAura)
-        y = y + 40
-        local rangeSlider = makeSlider(homePage, "KillAura Range", y, 5, 60, Config.KillAuraRange)
-        y = y + 60
-        local killMurderBtn = Instance.new("TextButton")
-        killMurderBtn.Size = UDim2.new(0,220,0,40)
-        killMurderBtn.Position = UDim2.new(0.5,-110,0,y)
-        killMurderBtn.Text = "KILL MURDER (SIM)"
-        killMurderBtn.Font = Enum.Font.GothamBold
-        killMurderBtn.TextScaled = true
-        killMurderBtn.BackgroundColor3 = Color3.fromRGB(180,50,50)
-        killMurderBtn.TextColor3 = Color3.fromRGB(255,255,255)
-        local kmCorner = Instance.new("UICorner"); kmCorner.CornerRadius = UDim.new(0,8); kmCorner.Parent = killMurderBtn
-        killMurderBtn.Parent = homePage
-        y = y + 50
-
-        -- handlers
-        kaBtn.MouseButton1Click:Connect(function()
-            Config.SimulatedKillAura = not Config.SimulatedKillAura
-            kaBtn.Text = Config.SimulatedKillAura and "ON" or "OFF"
-            kaBtn.BackgroundColor3 = Config.SimulatedKillAura and Color3.fromRGB(50,200,80) or Color3.fromRGB(150,150,150)
-        end)
-
-        -- slider click handler: update Config.KillAuraRange
-        rangeSlider.slider.InputBegan:Connect(function(inp)
-            if inp.UserInputType == Enum.UserInputType.MouseButton1 then
-                local mouse = game.Players.LocalPlayer:GetMouse()
-                local absX = mouse.X - rangeSlider.slider.AbsolutePosition.X
-                local percent = math.clamp(absX / rangeSlider.slider.AbsoluteSize.X, 0, 1)
-                rangeSlider.fill.Size = UDim2.new(percent,0,1,0)
-                local newVal = math.floor(5 + percent * (60-5))
-                rangeSlider.valueLabel.Text = tostring(newVal)
-                Config.KillAuraRange = newVal
-            end
-        end)
-
-        killMurderBtn.MouseButton1Click:Connect(function()
-            local ok, msg = SimulatedKillMurderAction()
-            -- notifica locale
-            local info = Instance.new("TextLabel")
-            info.Size = UDim2.new(0,380,0,44)
-            info.Position = UDim2.new(0.5,-190,1,-60)
-            info.BackgroundTransparency = 0.4
-            info.BackgroundColor3 = Color3.fromRGB(0,0,0)
-            info.TextColor3 = Color3.fromRGB(255,255,255)
-            info.TextScaled = true
-            info.Font = Enum.Font.GothamBold
-            info.Text = msg or (ok and "Azione simulata eseguita." or "N/A")
-            info.Parent = screenGui
-            delay(3,function() pcall(function() info:Destroy() end) end)
-        end)
-    end
-
-    -- populate ESP page
-    do
-        local y = 6
-        makeLabel(espPage, "ESP Settings", y); y = y + 28
-        local espToggle = makeToggle(espPage, "Enable ESP", y, Config.EspEnabled)
-        y = y + 40
-        local murdererToggle = makeToggle(espPage, "Show Murderer", y, Config.ShowMurderer)
-        y = y + 40
-        local sheriffToggle = makeToggle(espPage, "Show Sheriff", y, Config.ShowSheriff)
-        y = y + 40
-        local innocentToggle = makeToggle(espPage, "Show Innocent", y, Config.ShowInnocent)
-        y = y + 40
-
-        espToggle.MouseButton1Click:Connect(function()
-            Config.EspEnabled = not Config.EspEnabled
-            espToggle.Text = Config.EspEnabled and "ON" or "OFF"
-            espToggle.BackgroundColor3 = Config.EspEnabled and Color3.fromRGB(50,200,80) or Color3.fromRGB(150,150,150)
-            -- applica/rimuovi highlights
-            for _, p in pairs(Players:GetPlayers()) do ApplyESPToPlayer(p) end
-        end)
-        murdererToggle.MouseButton1Click:Connect(function()
-            Config.ShowMurderer = not Config.ShowMurderer
-            murdererToggle.Text = Config.ShowMurderer and "ON" or "OFF"
-            murdererToggle.BackgroundColor3 = Config.ShowMurderer and Color3.fromRGB(50,200,80) or Color3.fromRGB(150,150,150)
-            for _, p in pairs(Players:GetPlayers()) do ApplyESPToPlayer(p) end
-        end)
-        sheriffToggle.MouseButton1Click:Connect(function()
-            Config.ShowSheriff = not Config.ShowSheriff
-            sheriffToggle.Text = Config.ShowSheriff and "ON" or "OFF"
-            sheriffToggle.BackgroundColor3 = Config.ShowSheriff and Color3.fromRGB(50,200,80) or Color3.fromRGB(150,150,150)
-            for _, p in pairs(Players:GetPlayers()) do ApplyESPToPlayer(p) end
-        end)
-        innocentToggle.MouseButton1Click:Connect(function()
-            Config.ShowInnocent = not Config.ShowInnocent
-            innocentToggle.Text = Config.ShowInnocent and "ON" or "OFF"
-            innocentToggle.BackgroundColor3 = Config.ShowInnocent and Color3.fromRGB(50,200,80) or Color3.fromRGB(150,150,150)
-            for _, p in pairs(Players:GetPlayers()) do ApplyESPToPlayer(p) end
-        end)
-
-        -- pulsante trova pistola
-        local findPistolBtn = Instance.new("TextButton")
-        findPistolBtn.Size = UDim2.new(0,200,0,38)
-        findPistolBtn.Position = UDim2.new(0.5,-100,0,y+10)
-        findPistolBtn.Text = "Find Pistol (SEGNALA)"
-        findPistolBtn.Font = Enum.Font.GothamBold
-        findPistolBtn.TextScaled = true
-        findPistolBtn.BackgroundColor3 = Color3.fromRGB(0,120,255)
-        findPistolBtn.TextColor3 = Color3.fromRGB(255,255,255)
-        local fpc = Instance.new("UICorner"); fpc.CornerRadius = UDim.new(0,8); fpc.Parent = findPistolBtn
-        findPistolBtn.Parent = espPage
-
-        findPistolBtn.MouseButton1Click:Connect(function()
-            local n = FindAndHighlightPistols()
-            local info = Instance.new("TextLabel")
-            info.Size = UDim2.new(0,340,0,44)
-            info.Position = UDim2.new(0.5,-170,1,-60)
-            info.BackgroundTransparency = 0.4
-            info.BackgroundColor3 = Color3.fromRGB(0,0,0)
-            info.TextColor3 = Color3.fromRGB(255,255,255)
-            info.TextScaled = true
-            info.Font = Enum.Font.GothamBold
-            if n > 0 then
-                info.Text = "Trovate " .. tostring(n) .. " pistole non possedute. Evidenziate (client-only)."
-            else
-                info.Text = "Nessuna pistola non posseduta trovata."
-            end
-            info.Parent = screenGui
-            delay(3,function() pcall(function() info:Destroy() end) end)
-        end)
-    end
-
-    -- populate Utilities page
-    do
-        local y = 6
-        makeLabel(utilPage, "Utilities (SIMULATE)", y); y = y + 28
-        local speedLbl = makeLabel(utilPage, "Speed (sim)", y); y = y + 30
-        local speedVal = Instance.new("TextLabel")
-        speedVal.Size = UDim2.new(0,80,0,24)
-        speedVal.Position = UDim2.new(1,-92,0,44)
-        speedVal.BackgroundTransparency = 1
-        speedVal.Text = "16"
-        speedVal.TextScaled = true
-        speedVal.Font = Enum.Font.Gotham
-        speedVal.Parent = utilPage
-
-        local speedSlider = makeSlider(utilPage, "Speed Value (sim)", 44, 8, 100, 16)
-        y = y + 80
-
-        local flyBtn = makeToggle(utilPage, "Fly (sim)", y, false)
-        y = y + 40
-
-        local note = Instance.new("TextLabel")
-        note.Size = UDim2.new(1,-12,0,40)
-        note.Position = UDim2.new(0,6,0,y)
-        note.BackgroundTransparency = 1
-        note.Text = "Nota: Speed e Fly sono simulati/locali e NON modificano lo stato del server. Usali solo come indicatori."
-        note.TextColor3 = Color3.fromRGB(200,200,200)
-        note.TextWrapped = true
-        note.Font = Enum.Font.Gotham
-        note.TextScaled = false
-        note.Parent = utilPage
-
-        -- handlers
-        speedSlider.slider.InputBegan:Connect(function(inp)
-            if inp.UserInputType == Enum.UserInputType.MouseButton1 then
-                local mouse = game.Players.LocalPlayer:GetMouse()
-                local absX = mouse.X - speedSlider.slider.AbsolutePosition.X
-                local percent = math.clamp(absX / speedSlider.slider.AbsoluteSize.X, 0, 1)
-                speedSlider.fill.Size = UDim2.new(percent,0,1,0)
-                local newVal = math.floor(8 + percent * (100-8))
-                speedSlider.valueLabel.Text = tostring(newVal)
-                speedVal.Text = tostring(newVal)
-            end
-        end)
-
-        flyBtn.MouseButton1Click:Connect(function()
-            local on = flyBtn.Text ~= "ON"
-            flyBtn.Text = on and "ON" or "OFF"
-            flyBtn.BackgroundColor3 = on and Color3.fromRGB(50,200,80) or Color3.fromRGB(150,150,150)
-            -- solo indicatore: potresti aggiungere effetti visuali o HUD, ma non movimenti reali
-        end)
-    end
-
-    -- tab switching
-    local function showPage(name)
-        for k,v in pairs(pages) do v.Visible = false end
-        pages[name].Visible = true
-    end
-    showPage("Home")
-    homeTab.MouseButton1Click:Connect(function() showPage("Home") end)
-    espTab.MouseButton1Click:Connect(function() showPage("ESP") end)
-    utilTab.MouseButton1Click:Connect(function() showPage("Utilities") end)
-
-    -- open/close controls
-    local openButton = Instance.new("TextButton")
-    openButton.Size = UDim2.new(0,120,0,36)
-    openButton.Position = UDim2.new(0.02,0,0.02,0)
-    openButton.Text = "Open Fire Hub"
-    openButton.Font = Enum.Font.GothamBold
-    openButton.TextScaled = true
-    openButton.BackgroundColor3 = Color3.fromRGB(30,30,30)
-    openButton.TextColor3 = Color3.fromRGB(255,255,255)
-    openButton.Parent = screenGui
-    local openCorner = Instance.new("UICorner"); openCorner.CornerRadius = UDim.new(0,6); openCorner.Parent = openButton
-    openButton.ZIndex = 50
-
-    openButton.MouseButton1Click:Connect(function()
-        mainFrame.Visible = true
-    end)
-    closeBtn.MouseButton1Click:Connect(function() mainFrame.Visible = false end)
-
-    -- make open button toggle visibility if mainFrame gets closed
-    mainFrame:GetPropertyChangedSignal("Visible"):Connect(function()
-        if mainFrame.Visible then openButton.Visible = false else openButton.Visible = true end
+    local state = default
+    btn.MouseButton1Click:Connect(function()
+        state = not state
+        btn.Text = name .. ": " .. (state and "ON" or "OFF")
+        btn.BackgroundColor3 = state and Color3.fromRGB(60, 100, 60) or Color3.fromRGB(45, 45, 45)
+        callback(state)
     end)
 end
 
--- inizializza ESP su tutti i players (client-only)
-for _, p in pairs(Players:GetPlayers()) do ApplyESPToPlayer(p) end
-Players.PlayerAdded:Connect(function(p) ApplyESPToPlayer(p) end)
-
--- crea UI
-CreateFireHubUI()
-
--- loop per kill aura simulata (client-only visual)
-RunService.Heartbeat:Connect(function()
-    SimulatedKillAuraStep()
+-- // ADDING BUTTONS TO UI
+CreateToggle("Master ESP", Config.ESP.Enabled, function(v) 
+    Config.ESP.Enabled = v 
+    ApplyESP() 
 end)
 
-print("Fire Hub (client-only, sicuro) caricato.")
+CreateToggle("Show Murderer", Config.ESP.Murderer, function(v) 
+    Config.ESP.Murderer = v 
+    ApplyESP() 
+end)
+
+CreateToggle("Show Sheriff", Config.ESP.Sheriff, function(v) 
+    Config.ESP.Sheriff = v 
+    ApplyESP() 
+end)
+
+CreateToggle("Show Innocents", Config.ESP.Innocent, function(v) 
+    Config.ESP.Innocent = v 
+    ApplyESP() 
+end)
+
+CreateToggle("Simulated KillAura", Config.Aura.Enabled, function(v) 
+    Config.Aura.Enabled = v 
+end)
+
+-- // MAIN LOOP (Aura & ESP Update)
+RunService.Heartbeat:Connect(function()
+    if Config.Aura.Enabled then
+        local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if not myHrp then return end
+
+        for _, p in pairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                local targetHrp = p.Character.HumanoidRootPart
+                if (targetHrp.Position - myHrp.Position).Magnitude <= Config.Aura.Range then
+                    -- Visual indicator only (Simulated)
+                    local highlight = targetHrp:FindFirstChild("AuraEffect") or Instance.new("SelectionBox", targetHrp)
+                    highlight.Name = "AuraEffect"
+                    highlight.Color3 = Color3.new(1, 0, 0)
+                    highlight.LineThickness = 0.1
+                end
+            end
+        end
+    end
+end)
+
+-- Draggable UI logic
+local dragging, dragInput, dragStartX, dragStartY
+MainFrame.InputBegan:Connect(function(input)
+    if input:UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true; dragStartX = input.Position.X; dragStartY = input.Position.Y
+    end
+end)
+
+game:GetService("UserInputService").InputChanged:Connect(function(input)
+    if input:UserInputType == Enum.UserInputType.MouseMovement and dragging then
+        local delta = input.Position - Vector2.new(dragStartX, dragStartY)
+        MainFrame.Position = MainFrame.Position - UDim2.new(0, delta.X, 0, delta.Y)
+    end
+end)
+
+game:GetService("UserInputService").InputEnded:Connect(function(input)
+    if input:UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+end)
+
+-- Init ESP on start
+ApplyESP()
+print("Fire Hub Loaded Successfully!")
