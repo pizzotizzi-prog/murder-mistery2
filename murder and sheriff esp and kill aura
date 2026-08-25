@@ -202,26 +202,49 @@ local function CreateLocalUI()
     screenGui.Parent = playerGui
     screenGui.ResetOnSpawn = false
 
+    -- Frame principale per i bottoni
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 220, 0, 70)
-    frame.Position = UDim2.new(0, 10, 0, 10)
-    frame.BackgroundTransparency = 0.35
+    frame.Size = UDim2.new(1, 0, 1, 0)
+    frame.Position = UDim2.new(0, 0, 0, 0)
+    frame.BackgroundTransparency = 1
     frame.BorderSizePixel = 0
     frame.Parent = screenGui
 
+    -- Bottone KILL ALL (sinistra)
     local killAllBtn = Instance.new("TextButton")
-    killAllBtn.Size = UDim2.new(0, 200, 0, 28)
-    killAllBtn.Position = UDim2.new(0, 10, 0, 10)
-    killAllBtn.Text = "Kill All (DISABLED)"
+    killAllBtn.Size = UDim2.new(0, 120, 0, 50)
+    killAllBtn.Position = UDim2.new(0, 20, 0.5, -25)
+    killAllBtn.Text = "KILL ALL"
+    killAllBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    killAllBtn.TextScaled = true
+    killAllBtn.Font = Enum.Font.GothamBold
+    killAllBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+    killAllBtn.BorderSizePixel = 0
     killAllBtn.Parent = frame
     killAllBtn.Visible = false
 
+    -- Arrotonda gli angoli del bottone KILL ALL
+    local killAllCorner = Instance.new("UICorner")
+    killAllCorner.CornerRadius = UDim.new(0, 8)
+    killAllCorner.Parent = killAllBtn
+
+    -- Bottone SHOOT MURDER (destra)
     local killMurderBtn = Instance.new("TextButton")
-    killMurderBtn.Size = UDim2.new(0, 200, 0, 28)
-    killMurderBtn.Position = UDim2.new(0, 10, 0, 36)
-    killMurderBtn.Text = "Kill Murderer (DISABLED)"
+    killMurderBtn.Size = UDim2.new(0, 120, 0, 50)
+    killMurderBtn.Position = UDim2.new(1, -140, 0.5, -25)
+    killMurderBtn.Text = "SHOOT MURDER"
+    killMurderBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    killMurderBtn.TextScaled = true
+    killMurderBtn.Font = Enum.Font.GothamBold
+    killMurderBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+    killMurderBtn.BorderSizePixel = 0
     killMurderBtn.Parent = frame
     killMurderBtn.Visible = false
+
+    -- Arrotonda gli angoli del bottone SHOOT MURDER
+    local killMurderCorner = Instance.new("UICorner")
+    killMurderCorner.CornerRadius = UDim.new(0, 8)
+    killMurderCorner.Parent = killMurderBtn
 
     -- Effetto visivo locale: applica highlight temporaneo ai giocatori specificati
     local function TemporaryHighlightPlayers(playersList, color)
@@ -278,9 +301,6 @@ local function CreateLocalUI()
         local hasGun = HasToolAnywhere(LocalPlayer, {"gun", "revolver", "pistol", "handcannon", "sheriff"})
         killAllBtn.Visible = hasKnife
         killMurderBtn.Visible = hasGun
-        -- aggiorna testi per chiarezza
-        if hasKnife then killAllBtn.Text = "Kill All (DISABLED) - You have knife" end
-        if hasGun then killMurderBtn.Text = "Kill Murderer (DISABLED) - You have gun" end
     end
 
     -- Collega eventi per aggiornare quando cambia equip/inventory
